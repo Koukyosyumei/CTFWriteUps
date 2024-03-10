@@ -1,5 +1,7 @@
 # Stonks
 
+Recall that in x86-64, 7-th and subsequent arguments are stacked in the stack (at least, the functino assumes that those arguments are stacked). Since printf-like functions do not check the number of arguments, we can inspect the contetnts of the stack.
+
 ```c
 #include <stdlib.h>
 #include <stdio.h>
