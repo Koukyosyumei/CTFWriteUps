@@ -1,6 +1,6 @@
 # PicoCTF
 
-| problem | target|
+| *problem* | *target* |
 |   :-:   |  :-:  |
 |  stonks |  FSB  |
 | unsubscriptionsarefree | Heap Exploit (Use After Free) |
