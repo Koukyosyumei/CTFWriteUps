@@ -1,0 +1,3 @@
+# buffer-overflow-0
+
+We can call `sissegv_handler` that prints the flag by causing segfault since `sissegv_handler` is registered as a signal handler for SIGSEGV.
