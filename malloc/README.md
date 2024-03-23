@@ -73,4 +73,96 @@ struct malloc_state
 };
 ```
 
+binsはbins[2n] (fdに対応) とbins[2n+1] (bkに相当) の2つで1セットとなっている。fdはmalloc_chunkの先頭から0x10バイト目にあるので (mchunk_prev_sizeとmchunk_sizeの分)、仮想チャンクの先頭はbins[2n-2]の位置となる。
 
+binsでは、解放済みチャンクをfb・bkを利用して双方向の循環リストにつなげて管理している。
+
+アドレス計算用マクロbins_atは1から始まる
+
+```c
+#define bin_at(m, 1)
+	(mbinptr) (((char *) &((m)->bins[((i) - 1 * 2])) - offsetof (struct malloc_chunk, fd))
+```
+
+#### fastbin
+
+小さいサイズのチャンクは確保や解放が頻繁に行われる傾向にあるので、低速な双方向リストではなく、高速な単方向リストで管理する。
+
+それぞれのチャンクサイズごとに繋がるリストが異なり、0x10ごとに分けられている
+
+```
+fastbinsY[0] -- 0x20バイトのチャンク
+fastbinsY[1] -- 0x30バイトのチャンク
+fastbinsY[2] -- ox40バイトのチャンク
+
+					.
+					.
+					.
+```
+
+通常はfastbinsYはインデックス0から6まで(0x80がDEFALUT_MAXFAST)利用できる。
+
+fastbinsで管理されるチャンクはnext_chunkのPREV_INUSEがセットされたままになる (利用されているかのように見える)。
+
+#### unsortedbin
+
+解放されたチャンクがsmallbinやlargebinに適切に分類される前の、一時的な保管場所
+
+bins_at(1)を利用する (つまり、bins[0]とbins[1])。
+
+ここで管理されるチャンクは、サイズごとにソートされず、つながれた順番のままになっている。
+
+#### smallbin
+
+smallbinはMIN_LARGE_SIZE未満のサイズのチャンクを管理する (典型的には0x400バイト)。
+
+unsortedbinとは異なり、1つのbinには同一サイズのチャンクのみが繋がれる。
+
+つまり、smallbinで管理されるチャンクの範囲は0x20から0x3f0バイトである。-> bins_at(2)からbins_at(63)までを使用する。
+
+#### largebin
+
+チャンクサイズの上限はなく、一定範囲のサイズのチャンクが降順で一つのbinに繋がれる
+
+例えば、0x400バイトから0x430バイトの範囲に収まるチャンクは、bin_at(64)に格納される。
+
+```c
+#define largebin_index_64(sz)
+	((((unsigned long) (sz)) >> 6 <= 48) ? 48 ++ (((unsinged long) (sz)) >> 6)
+					.
+					.
+					.
+```
+
+fb_nextsize、bk_nextsizeは、サイズが同一のチャンクを無視した循環リストで、largebinにおいてより高速な検索を可能にしている。
+
+#### tcache
+
+tcacheは解放したチャンクをスレッド単位でキャッシュすることを目的にしており、アリーナでは管理されていない。
+
+tcache_entryというチャンクが単方向線形リストで結ばれており、キャッシュされるエントリはentriesでサイズごとに管理されている (fastbinsと同様に0x20バイトから0x10バイトごと)。
+
+```c
+typedef struct tcache_entry
+{
+	struct tcache_entry *next;
+	struct tcache_perthread_struct *key;
+} tcache_entry;
+
+typedef struct tcache_perthread_struct
+{
+	uint64_t counts[TCACHE_MAX_BINS];
+	tcache_entry *entries[TCACHE_MAX_BINS];
+}tcache_perthread_struct;
+```
+TCACHE_MAX_BINSは64と定義されているので、entriesんは64個まで要素が入る
+
+また、countsには、キャッシュされているエントリの数がサイズ別に保存されている。各サイズにキャッシュされているエントリ数には上限があり、_tcache_countで決定される(デフォルト値は7)。
+
+tcache_entryのkeyは自身が属するtcache_perthread_structの先頭アドレスが格納されており、double freeの検出に使うことができる。
+
+### リスト上のチャンク操作
+
+#### tcache
+
+tacheは単方向の線形リストであり、サイズに応じたインデックスnを用いてentries[n]を更新する。
