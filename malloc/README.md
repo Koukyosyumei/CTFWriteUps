@@ -161,6 +161,8 @@ TCACHE_MAX_BINSは64と定義されているので、entriesんは64個まで要
 
 tcache_entryのkeyは自身が属するtcache_perthread_structの先頭アドレスが格納されており、double freeの検出に使うことができる。
 
+つまり、一定のサイズ未満のチャンクがfreeされた時は、fastbinではなくtcacheにつなげておく
+
 ### リスト上のチャンク操作
 
 #### tcache
@@ -172,3 +174,13 @@ tacheは単方向の線形リストであり、サイズに応じたインデッ
 チャンクの追加・取り出しはともにリストの先頭から行われる。
 
 ### mallocの動き
+
+確保するチャンクのサイズに応じたインデックスがmp.tcache_bins未満である場合は、まずはtcacheからチャンクの確保を試みる
+
+ここでチャンクの確保に成功すれば、tcache_get()から返ったアドレスをそのまま返す
+
+#### fastbinから確保
+
+要求サイズがglobal_max_fast以下であった時には、fastbinからの確保を試みる
+
+
