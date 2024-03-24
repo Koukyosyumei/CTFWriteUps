@@ -166,3 +166,9 @@ tcache_entryのkeyは自身が属するtcache_perthread_structの先頭アドレ
 #### tcache
 
 tacheは単方向の線形リストであり、サイズに応じたインデックスnを用いてentries[n]を更新する。
+
+#### fastbin
+
+チャンクの追加・取り出しはともにリストの先頭から行われる。
+
+### mallocの動き
